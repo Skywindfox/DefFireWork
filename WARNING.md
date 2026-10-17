@@ -289,11 +289,20 @@ fontconfig 会静默做替换（substitution），返回一个替补字体。
 **当前版本改为按文件路径查找**（`kFontCandidates`），比按字体名可靠。
 若以后改回按名查找，必须自己校验字形覆盖（`XftCharExists`）。
 
-### C-3. 字体候选表是 Debian 布局
+### C-3. 字体候选表只认固定路径 —— 已加目录扫描兜底
 
 `kFontCandidates` 里的路径来自 Debian（`/usr/share/fonts/truetype/wqy/...`）。
-Fedora 上这些路径**全部不存在**，所以开发机预览会显示方框（见 [A-2](#a-当前遗留问题)）。
-要同时支持两个系统，需要把 Fedora 的路径也加进候选表。
+Fedora 上这些路径**全部不存在**（它的 Noto CJK 装在
+`/usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc`），
+开发机预览一度全是方框 + 满屏 `glyph dsc. not found`。
+
+现在候选表没命中会**现场扫** `/usr/share/fonts`、`/usr/local/share/fonts`、
+`~/.local/share/fonts`、`~/.fonts`（深度 ≤ 4，`lstat` 跳过软链接以免绕圈），
+按优先级取名（文泉驿 > Noto CJK > 思源 > Droid Sans Fallback > UMing）。
+**为什么要排优先级**：目录遍历顺序按文件名，不排的话 `google-droid-sans-fonts`
+排在 `google-noto-*` 前面，会选中 Droid Sans Fallback —— 能显示汉字，但不是想要的字体。
+
+教训：凡是"发行版包里的文件路径"，都别只写死一条。
 
 ### C-4. LVGL 集成时踩的三个坑
 

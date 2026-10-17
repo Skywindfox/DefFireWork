@@ -43,9 +43,13 @@
 #include <X11/Xlib.h>
 
 #include <clocale>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+#include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "start.h"  // led_on / led_off (板载 sys-led)
@@ -107,7 +111,8 @@ constexpr int pct(int total, int percent) { return total * percent / 100; }
 //
 // 按"文件路径"找字体, 而不是像 Xft 那样按 fontconfig 字体名 —— 名字查找会
 // 被 fontconfig 静默替换成别的字体, 拿到一个不含汉字的字体也察觉不到。
-// 给一串候选路径, 取第一个能打开的。
+// 给一串候选路径, 取第一个能打开的。候选表没命中时还会现场扫 /usr/share/fonts
+// (见 scanForCjkFont) —— 硬编码的单个路径迟早会被发行版的包布局改掉。
 //
 // 板子上一共就这么几个可能的位置 (前两个是 Debian 官方包 fonts-wqy-zenhei 的
 // 安装路径), 最后一个是 DejaVu —— 不含汉字, 只是保证程序还能跑起来。
@@ -126,6 +131,129 @@ bool fileReadable(const char *path)
     return access(path, R_OK) == 0;
 }
 
+// 忽略大小写的子串匹配 (strcasestr 是 GNU 扩展, 不写进可移植代码)。
+bool containsIgnoreCase(const char *hay, const char *needle)
+{
+    for (const char *p = hay; *p != '\0'; p++) {
+        const char *a = p;
+        const char *b = needle;
+        while (*a != '\0' && *b != '\0' &&
+               std::tolower(static_cast<unsigned char>(*a)) ==
+                   std::tolower(static_cast<unsigned char>(*b))) {
+            a++;
+            b++;
+        }
+        if (*b == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasFontExtension(const char *name)
+{
+    return containsIgnoreCase(name, ".ttc") || containsIgnoreCase(name, ".ttf") ||
+           containsIgnoreCase(name, ".otf");
+}
+
+// 中文字体的优先级: 数字越小越优先, 负数 = 不是中文字体。
+//
+// 光看"含不含汉字"不够 —— 目录遍历顺序是按文件名的, DroidSansFallback
+// 排在 Noto 前面就会被选中。板上首选文泉驿(镜像自带), 开发机次选 Noto。
+int cjkFontRank(const char *name)
+{
+    static const struct {
+        const char *key;
+        int rank;
+    } kKeys[] = {
+        {"wqy-zenhei", 0},         // 文泉驿正黑 —— 板上装的就是这个
+        {"wqy-microhei", 1},       // 文泉驿微米黑
+        {"notosanscjk", 2},        // Noto Sans CJK
+        {"notosanssc", 2},         // Noto Sans SC 子集
+        {"sourcehansans", 3},      // 思源黑体
+        {"droidsansfallback", 4},  // 安卓的兜底字体, 能用但不是首选
+        {"uming", 5},              // AR PL UMing
+    };
+    for (const auto &k : kKeys) {
+        if (containsIgnoreCase(name, k.key)) {
+            return k.rank;
+        }
+    }
+    return -1;
+}
+
+// 递归扫一个目录, 在 out 里保留优先级最高的那个 (best_rank 跨目录累积)。
+// 深度限死 4 层: 字体目录不会更深, 也避免软链接成环。
+bool scanDirForFont(const char *dir, int depth, char *out, size_t out_size, int *best_rank)
+{
+    if (depth > 4) {
+        return false;
+    }
+    DIR *d = opendir(dir);
+    if (d == nullptr) {
+        return false;
+    }
+    bool found = false;
+    for (struct dirent *e = readdir(d); e != nullptr; e = readdir(d)) {
+        if (std::strcmp(e->d_name, ".") == 0 || std::strcmp(e->d_name, "..") == 0) {
+            continue;
+        }
+        char path[1024];
+        const int n = std::snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
+        if (n < 0 || static_cast<size_t>(n) >= sizeof path) {
+            continue;
+        }
+        struct stat st {};
+        if (lstat(path, &st) != 0) {  // lstat: 软链接不当目录走, 免得绕圈
+            continue;
+        }
+        if (S_ISDIR(st.st_mode)) {
+            if (scanDirForFont(path, depth + 1, out, out_size, best_rank)) {
+                found = true;
+            }
+            continue;
+        }
+        if (!S_ISREG(st.st_mode) || !hasFontExtension(e->d_name)) {
+            continue;
+        }
+        const int rank = cjkFontRank(e->d_name);
+        if (rank >= 0 && (*best_rank < 0 || rank < *best_rank)) {
+            std::snprintf(out, out_size, "%s", path);
+            *best_rank = rank;
+            found = true;
+        }
+    }
+    closedir(d);
+    return found;
+}
+
+// 候选表没命中时, 在常见字体目录里现场找 —— 发行版的包会把同一个字体装到
+// 不同目录 (Fedora 现在是 /usr/share/fonts/google-noto-sans-cjk-vf-fonts/)。
+const char *scanForCjkFont()
+{
+    static char best[1024];
+    static int best_rank = -1;
+    static const char *kRoots[] = {
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+    };
+    for (const char *root : kRoots) {
+        if (best_rank == 0) {
+            break;  // 文泉驿已经是首选, 不用再找了
+        }
+        scanDirForFont(root, 0, best, sizeof best, &best_rank);
+    }
+    const char *home = std::getenv("HOME");
+    if (best_rank != 0 && home != nullptr && *home != '\0') {
+        char dir[1024];
+        std::snprintf(dir, sizeof dir, "%s/.local/share/fonts", home);
+        scanDirForFont(dir, 0, best, sizeof best, &best_rank);
+        std::snprintf(dir, sizeof dir, "%s/.fonts", home);
+        scanDirForFont(dir, 0, best, sizeof best, &best_rank);
+    }
+    return best_rank >= 0 ? best : nullptr;
+}
+
 const char *pickFontFile(const char *override_path)
 {
     if (override_path != nullptr && *override_path != '\0') {
@@ -138,6 +266,9 @@ const char *pickFontFile(const char *override_path)
         if (fileReadable(path)) {
             return path;
         }
+    }
+    if (const char *scanned = scanForCjkFont(); scanned != nullptr) {
+        return scanned;
     }
     std::fprintf(stderr,
                  "警告: 找不到中文字体, 界面上的汉字会显示成方框。\n"

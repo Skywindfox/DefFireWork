@@ -325,6 +325,9 @@ sudo reboot
   真全屏，要真铺满得发 `_NET_WM_STATE_FULLSCREEN`（见 WARNING.md C-7 与第 10 节待办）。
 - **字体**：主标题 40 px、标题栏与按钮 18 px、状态文字 16 px；中文字体在启动时
   按候选表找一个字体**文件**（而不是字体名，避免 fontconfig 静默替换成不含汉字的字体）。
+  候选表没命中时会**现扫** `/usr/share/fonts` 等目录（按 文泉驿 > Noto CJK > 思源 >
+  Droid Sans Fallback > UMing 的优先级取最优）—— 发行版的包布局会变，硬编码单条路径
+  迟早失效（Fedora 现在把 Noto CJK 装在 `google-noto-sans-cjk-vf-fonts/` 下）。
 - **`q` / `Esc` 为什么能全局生效**：LVGL 的键盘输入只发给"输入组里当前被聚焦的
   对象"，组里没有聚焦对象时按键会被直接丢掉。所以启动时把**屏幕本身**加进默认
   组并聚焦它（按钮不进组，点按钮不会把焦点抢走）。
@@ -499,7 +502,7 @@ build-debug/         Debug 构建
 - [ ] **在板子上实测 LVGL 版**：`verify-on-board.sh` 校验后运行，确认窗口、中文、触摸
 - [ ] 板上实测触摸：点【退出】与占位按钮的命中是否准确、坐标是否偏移
 - [ ] 确认全屏下字号观感（`kBigFontPx` / `kSmallFontPx`）
-- [ ] 给字体候选表补上 Fedora 的路径（方便开发机预览中文，见 WARNING.md A-2）
+- [x] ~~给字体候选表补上 Fedora 的路径~~ —— 改成「候选表没命中就扫目录」（见 WARNING.md C-3）
 - [ ] **实测 Openbox 下是否真全屏**：板上跑一次无参 `./deffire-gui-dev`，看窗口有没有被
       加标题栏 / 留边距。没铺满就要发 `_NET_WM_STATE_FULLSCREEN`（见 WARNING.md C-7）
 - [ ] 填充首页那 3 个占位按钮（`功能 A` / `功能 B` / `功能 C`）—— 要么接上真实功能，

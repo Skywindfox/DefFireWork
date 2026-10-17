@@ -182,6 +182,9 @@ int gpio_input_read(const GpioInput &in, int *out_level)
 // 不需要这个频率 —— 200 ms(5 Hz)对状态量完全够, 板上单核也少烧 CPU。
 // 第一次调用总是立刻跑, 之后按 kStatusPeriodUs 限频。
 //
+// 打印同样按"变化"触发: 采样每次都做, 只有状态变了才打一行 —— 否则 5 Hz 的
+// 日志会把终端刷满, 而没变化的信息本来也没有价值。
+//
 // 返回值: 0 —— 单路失败不算整体失败(原因逐条打在 stderr); 负数留给将来
 // "整个采集流程都起不来"那种情况。
 // ---------------------------------------------------------------------------
@@ -189,6 +192,7 @@ int status()
 {
     constexpr uint64_t kStatusPeriodUs = 200000;  // 200 ms
     static uint64_t last_run_us = 0;
+    static int last_sig = -1;  // 上次打印时的状态签名; -1 = 还从没打印过
 
     const uint64_t now = monotonic_us();
     if (last_run_us != 0 && now - last_run_us < kStatusPeriodUs) {
@@ -196,34 +200,55 @@ int status()
     }
     last_run_us = now;
 
+    // 先采样, 再决定打不打印。
+    const int filled = countFilledInputs();
+    int levels[kGpioInputSlots] = {};
+    int failed = 0;
+    int sig = filled * 1000;  // 签名: 接线几路 + 每一路的电平
+    for (int i = 0; i < kGpioInputSlots; i++) {
+        const GpioInput &in = kGpioInputs[i];
+        levels[i] = -2;  // -2 = 这一行还没填
+        if (in.name == nullptr) {
+            continue;
+        }
+        if (gpio_input_read(in, &levels[i]) != 0) {
+            levels[i] = -1;
+            failed++;
+        }
+        sig = sig * 7 + (levels[i] + 2);
+    }
+
+    // 状态没变就不打印。主循环约 1 ms 一轮、这里 5 Hz, 每轮都刷会直接把终端冲掉。
+    if (sig == last_sig) {
+        return 0;
+    }
+    last_sig = sig;
+
     std::printf("--- 板载开关量输入 ---\n");
 
-    const int filled = countFilledInputs();
     if (filled == 0) {
         // 空表不是错误, 是"还没接线 / 还没实测" —— 说清下一步做什么,
         // 不要假装读过了。
         std::printf("  还没有确认的接线: 先在板上跑 gpiodetect / gpioinfo,\n");
         std::printf("  再往 start.cpp 的 kGpioInputs 里一行填一个传感器\n");
+        std::fflush(stdout);
         return 0;
     }
 
-    int failed = 0;
     for (int i = 0; i < kGpioInputSlots; i++) {
         const GpioInput &in = kGpioInputs[i];
         if (in.name == nullptr) {
             continue;  // 还没填的行
         }
-        int level = -1;
-        if (gpio_input_read(in, &level) == 0) {
-            std::printf("  %s (%s:%u) 电平 %d\n", in.name, in.chip_label, in.line, level);
-        } else {
-            failed++;
+        if (levels[i] >= 0) {
+            std::printf("  %s (%s:%u) 电平 %d\n", in.name, in.chip_label, in.line, levels[i]);
         }
     }
 
     if (failed > 0) {
         std::printf("  %d/%d 路没读到 (原因见上面的 stderr)\n", failed, filled);
     }
+    std::fflush(stdout);
 
     return 0;
 }
