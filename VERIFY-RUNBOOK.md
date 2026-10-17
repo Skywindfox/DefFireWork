@@ -1,10 +1,10 @@
 # 上板验证 Runbook（待办 #1 / #2）
 
-> 面向 [README.md](README.md) §10 待办里**必须真机做**的那几条：上板实测 LVGL 版（触摸、
+> 面向 [NOTES.md](NOTES.md) §10 待办里**必须真机做**的那几条：上板实测 LVGL 版（触摸、
 > 字号观感、是否真全屏），以及 Windows 上首次运行 `build-armhf.ps1`。
 > 本文只回答四件事：**怎么执行 / 看什么算通过 / 失败怎么查 / 留什么证据**。
 > 原理与坑见 [WARNING.md](WARNING.md)（LED/蜂鸣器的 trigger 语义见 C-8，sysfs 权限见 D-8，
-> `build-armhf.ps1` 的 BOM 见 B-18）；板上环境见 [README.md](README.md) §4，构建/部署见 §5。
+> `build-armhf.ps1` 的 BOM 见 B-18）；板上环境见 [NOTES.md](NOTES.md) §3，构建/部署见 §2/§4。
 >
 > **本文不声称任何一项已验证。** 每一条都必须在真机（Windows / 板子）上跑出结果后，
 > 把结果按 §5 的模板回填，才算完成。开发机（Fedora）上没有 `pwsh`、也连不到板子，
@@ -161,7 +161,7 @@ sudo apt install libgpiod2
 是整个 GUI 起不来** —— 动态链接器在 `main()` 之前就报
 `error while loading shared libraries: libgpiod.so.2`。§3 的预检会把缺的库列出来。
 
-不想要这个依赖就在构建时 `-DWITH_GPIOD=OFF` 重新交叉编译（README §5.5）。
+不想要这个依赖就在构建时 `-DWITH_GPIOD=OFF` 重新交叉编译（NOTES.md §6）。
 
 （顺带：要看 GPIO 接线/占用情况时装上工具 —— `sudo apt install gpiod`，
 里面是 `gpiodetect` / `gpioinfo`。传感器接线确认见 workflow.md §2.3。
@@ -391,8 +391,8 @@ DISPLAY=:0 wmctrl -lG
 
 | 结果 | 要改的地方 |
 |---|---|
-| 待办 #1 通过 | `WARNING.md` A-1，`README.md` §9「上板实测（LVGL 版）」与 §10 对应条目；并把 §5 的实测记录贴进 `WARNING.md`（新增一节或附录） |
-| 待办 #2 通过 | `WARNING.md` A-1、`README.md` §10（`README.md` §3 / §5 里"Windows 侧还没跑过"之类的说法一并更新） |
+| 待办 #1 通过 | `WARNING.md` A-1，`NOTES.md` §9「上板实测（LVGL 版）」与 §10 对应条目；并把实测记录贴进 `WARNING.md`（新增一节或附录） |
+| 待办 #2 通过 | `WARNING.md` A-1、`NOTES.md` §10（`NOTES.md` §2 里"Windows 侧还没跑过"之类的说法一并更新） |
 | 全屏没铺满 | 保留待办 #4 并补实测数据（差多少像素、有无标题栏），再决定是否实现 EWMH 全屏 |
 | 任一项失败 | **不要**把文档改成"已通过"。开 issue / 记进 `WARNING.md` A 节，写清现象与复现命令 |
 

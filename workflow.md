@@ -6,7 +6,8 @@
 
 | 想知道什么 | 去哪 |
 |---|---|
-| 怎么构建 / 怎么跑 / 板上什么环境 | [README.md](README.md) §3–§5 |
+| 项目的目的、意义、要做的事 | [README.md](README.md) |
+| 怎么构建 / 怎么跑 / 板上什么环境 | [NOTES.md](NOTES.md) §1–§4 |
 | 踩过的坑、已知问题、未验证项 | [WARNING.md](WARNING.md) |
 | 要在 Windows 上构建，或者要上板实测 | [VERIFY-RUNBOOK.md](VERIFY-RUNBOOK.md) |
 | 未决设计问题、界面约定、协作上的硬约束 | **本文** |
@@ -21,7 +22,7 @@
 |---|---|---|
 | Linux 交叉编译（`build-armhf.sh`） | ✅ 实测通过 | 0 警告；同源同镜像重建产物 sha256 逐字节一致（可复现） |
 | Windows 交叉编译（`build-armhf.ps1`） | ✅ 已跑通 | FBI-0537 在 Windows 上实跑（2026-09-19，PR #8）：`-Wall -Wextra` 零警告，产物 407948 / 9788 字节。**待办 #2 达成**（此前只改过、从没执行过） |
-| 板上实测（LVGL 版） | ❌ **还没做** | README §10、WARNING A-1；逐项判据见 runbook §3–§4 |
+| 板上实测（LVGL 版） | ❌ **还没做** | NOTES.md §10、WARNING A-1；逐项判据见 runbook §3–§4 |
 | 原生 GUI（开发机预览） | ✅ 四页正常 | 首页 / LED 调试页 / 蜂鸣器调试页 / 外部蜂鸣器页：切页、按钮派发、退出路径都实测过 |
 | 骨架重构（四阶段 + 单循环） | ✅ 原生实测 | 0 警告；主循环 910 次/秒（与重构前一致）；点【退出】→ `gui_teardown()` → 进程干净退出；`--help` 不崩。见 §2.1 |
 | GPIO 输入（libgpiod） | ⚠ 只有骨架 | 依赖链已配齐并交叉编译通过；**没有任何调用点**，板端也没验过（不知道传感器接在哪个 gpiochip / 哪条线上） |
@@ -72,7 +73,7 @@ main.cpp（收命令行参数 + 定义程序级全局量 g_quit / g_argc / g_arg
 
 代码量还是 0。现在只有一条通道：`useable_tools::gpio_read_value()`（libgpiod v1），
 依赖链已配齐 —— `armhf-toolchain/Dockerfile` 里装了 `libgpiod-dev:armhf`（1.6.3，v1），
-CMake 用 `WITH_GPIOD`（默认 AUTO）控制，见 README §5.5。
+CMake 用 `WITH_GPIOD`（默认 AUTO）控制，见 NOTES.md §6。
 
 **只支持 v1 API**：`gpiod_chip_open_by_label` / `gpiod_line_request_input` 这套在
 **v2 里被删了**。容器与板子（Debian 12）是 1.6.3 = v1，可用；**Fedora 44 是 2.2.5 = v2**，

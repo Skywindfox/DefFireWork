@@ -23,7 +23,7 @@
 //   那一版的两个排查结论也都留在下面的实现里: 忽略窗口映射瞬间的杂散点击
 //   (见 kIgnoreClicksMs), 以及字体必须确认真的含汉字字形。
 //   当前这一版由 FBI-0537 重构到 LVGL —— 界面结构、字体加载、事件分发都换成
-//   LVGL 那一套; "不用 GTK/Qt"这条理由对 LVGL 同样成立 (见 README 第 5 节)。
+//   LVGL 那一套; "不用 GTK/Qt"这条理由对 LVGL 同样成立 (见 NOTES.md §8)。
 //
 // 编译: 见 CMakeLists.txt, 目标 deffire-gui-dev
 // 运行:
@@ -992,7 +992,7 @@ int gui_build()
 
     // 窗口尺寸按屏幕实际尺寸算。
     //
-    // 板上确认跑着 **Openbox** (桌面环境 LXDE, 见 README「板上运行环境」), 所以
+    // 板上确认跑着 **Openbox** (桌面环境 LXDE, 见 NOTES.md §3「目标板环境」), 所以
     // 这个窗口会被 WM 接管: 开发机上实测窗口被加了装饰、报了 1074x687 而不是
     // 请求的 1024x600。要真正铺满屏幕, 需要在建窗口后发
     // _NET_WM_STATE_FULLSCREEN (走 EWMH, 见 WARNING.md C-7)。
