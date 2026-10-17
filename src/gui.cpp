@@ -334,7 +334,11 @@ int g_btn_h = 48;
 int g_margin = 10;
 
 uint32_t g_start_tick = 0;
-bool g_quit = false;
+// g_quit 的定义在 main.cpp (程序级全局状态); 这里通过 start.h 的 extern 使用。
+
+// LVGL 是否已经 lv_init() 过 —— gui_teardown() 要能安全处理"没建起来"的情况
+// (例如 --help 提前返回), 不能对没初始化过的 LVGL 调 lv_deinit()。
+bool g_lv_inited = false;
 
 // 内容区那行小字: "页名", 或 "页名 · 上一步结果"
 void refreshPageLabel()
@@ -785,18 +789,25 @@ void addMouseCursor(void)
 
 } // namespace
 
-int main(int argc, char **argv)
+// ---------------------------------------------------------------------------
+// gui_build(): 建界面 —— 只调一次。原来的 main() 前半段(探 X → lv_init → 字体 →
+// 窗口 → 输入 → 布局)整段搬到这里。
+//
+// 命令行参数来自 main.cpp 定义的 g_argc / g_argv(四个阶段的签名保持不带参数)。
+// 返回值: 0 成功; -1 失败(具体原因已经打到 stderr)。
+// ---------------------------------------------------------------------------
+int gui_build()
 {
     bool windowed = false;
     const char *font_override = std::getenv("FIRECONTROL_FONT");
 
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--windowed") == 0) {
+    for (int i = 1; i < g_argc; i++) {
+        if (std::strcmp(g_argv[i], "--windowed") == 0) {
             windowed = true;
-        } else if (std::strncmp(argv[i], "--font=", 7) == 0) {
-            font_override = argv[i] + 7;
-        } else if (std::strcmp(argv[i], "-h") == 0 ||
-                   std::strcmp(argv[i], "--help") == 0) {
+        } else if (std::strncmp(g_argv[i], "--font=", 7) == 0) {
+            font_override = g_argv[i] + 7;
+        } else if (std::strcmp(g_argv[i], "-h") == 0 ||
+                   std::strcmp(g_argv[i], "--help") == 0) {
             std::printf("用法: %s [--windowed] [--font=<字体文件>]\n"
                         "  (无参数)     全屏 —— 板上用这个 (按屏幕实际尺寸铺满)\n"
                         "  --windowed   1024x600 窗口模式 —— 开发机预览用\n"
@@ -804,7 +815,10 @@ int main(int argc, char **argv)
                         "  -h, --help   显示本帮助\n"
                         "\n"
                         "交互: 点右上角【退出】按钮退出, 或按 q / Esc\n",
-                        argv[0]);
+                        g_argv[0]);
+            // 帮助打完就结束: 置退出标志, cpp_start 的循环一轮都不会跑。
+            // (gui_teardown 对"没建过界面"是安全的, 见 g_lv_inited。)
+            g_quit = true;
             return 0;
         }
     }
@@ -832,7 +846,7 @@ int main(int argc, char **argv)
                      "  2) export DISPLAY=:0           串口/ssh 会话里默认没有这个变量\n"
                      "  3) export XAUTHORITY=<xauth>   Xorg 带 -auth 时的认证文件\n",
                      std::getenv("DISPLAY") ? std::getenv("DISPLAY") : "(未设置)");
-        return 1;
+        return -1;
     }
 
     const int scr_n = DefaultScreen(probe);
@@ -860,6 +874,7 @@ int main(int argc, char **argv)
     // LVGL 初始化
     // -----------------------------------------------------------------------
     lv_init();
+    g_lv_inited = true;
 
     // FreeType 已经由 lv_init() 初始化过了 (third_party/lvgl/src/lv_init.c:
     // lv_freetype_init(LV_FREETYPE_CACHE_FT_GLYPH_CNT))。**不要再调一次** ——
@@ -879,7 +894,7 @@ int main(int argc, char **argv)
     g_disp = lv_x11_window_create(kTitle, win_w, win_h);
     if (g_disp == nullptr) {
         std::fprintf(stderr, "创建 X11 窗口失败\n");
-        return 1;
+        return -1;
     }
     lv_x11_inputs_create(g_disp, nullptr);
     lv_display_add_event_cb(g_disp, onDisplayDeleted, LV_EVENT_DELETE, nullptr);
@@ -928,49 +943,67 @@ int main(int argc, char **argv)
     std::fflush(stdout);
 
     g_start_tick = lv_tick_get();
+    return 0;
+}
 
-    while (!g_quit) {
-        // 外部无源蜂鸣器的方波由它自己的线程发, 这里不需要每轮推 —— 主循环
-        // 只管界面(切页 + LVGL 定时器)。
-
-        // 切页在这里落地: 事件回调只置标志, 避免在派发点击的过程中删掉底栏
-        // (见 g_page_dirty 的说明)。重建完刷新内容区那行小字。
-        if (g_page_dirty) {
-            g_page_dirty = false;
-            buildPageButtons();
-            std::printf("切换到 %s (底栏 %d 个按钮)\n",
-                        kPages[static_cast<int>(g_page)].name,
-                        kPages[static_cast<int>(g_page)].count);
-            std::fflush(stdout);
-        }
-
-        // X11 后端自己有两个定时器在读 X 事件 (显示 5 ms / 输入 1 ms),
-        // 这里只需要按 LVGL 给的间隔循环调用即可。
-        uint32_t idle = lv_timer_handler();
-        if (idle == LV_NO_TIMER_READY || idle > kMaxSleepMs) {
-            idle = kMaxSleepMs;
-        }
-        usleep(idle * 1000);
+// ---------------------------------------------------------------------------
+// render(): 刷一帧 —— 主循环在 cpp_start() 里, 这里只做"一帧"该做的事。
+// 返回值: 0(留给将来"这一帧出错要不要停"的语义, 现在不阻断循环)。
+// ---------------------------------------------------------------------------
+int render()
+{
+    // 切页在这里落地: 事件回调只置标志, 避免在派发点击的过程中删掉底栏
+    // (见 g_page_dirty 的说明)。重建完刷新内容区那行小字。
+    if (g_page_dirty) {
+        g_page_dirty = false;
+        buildPageButtons();
+        std::printf("切换到 %s (底栏 %d 个按钮)\n", kPages[static_cast<int>(g_page)].name,
+                    kPages[static_cast<int>(g_page)].count);
+        std::fflush(stdout);
     }
 
+    // 外部无源蜂鸣器的方波由它自己的线程发, 这里不用管 —— 主循环只管界面。
+    //
+    // X11 后端自己有两个定时器在读 X 事件 (显示 5 ms / 输入 1 ms), 这里只需要
+    // 按 LVGL 给的间隔睡一下即可。
+    uint32_t idle = lv_timer_handler();
+    if (idle == LV_NO_TIMER_READY || idle > kMaxSleepMs) {
+        idle = kMaxSleepMs;
+    }
+    usleep(idle * 1000);
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// gui_teardown(): 收尾 —— 停蜂鸣器线程 / 关显示 / 删字体 / lv_deinit()。
+// 对"界面没建起来"的情况也必须安全(例如 --help 或建窗口失败)。
+// ---------------------------------------------------------------------------
+void gui_teardown()
+{
     std::printf("退出\n");
 
-    // 收尾: 停蜂鸣器 + 把 PA6 还回去 + join 发声线程 —— 在销毁显示/字体之前做,
+    // 先停蜂鸣器: 停声 + 把 PA6 还回去 + join 发声线程。要在销毁显示/字体之前,
     // 免得线程还在往 GPIO 写的时候进程被拆掉。
     buzzer_out_shutdown();
 
     if (g_disp != nullptr) {
         lv_display_delete(g_disp);  // 关 X 窗口, 停掉 tick 线程
+        g_disp = nullptr;
     }
     if (g_font_big != nullptr) {
         lv_freetype_font_delete(g_font_big);
+        g_font_big = nullptr;
     }
     if (g_font_small != nullptr) {
         lv_freetype_font_delete(g_font_small);
+        g_font_small = nullptr;
     }
     if (g_font_status != nullptr) {
         lv_freetype_font_delete(g_font_status);
+        g_font_status = nullptr;
     }
-    lv_deinit();
-    return 0;
+    if (g_lv_inited) {
+        lv_deinit();
+        g_lv_inited = false;
+    }
 }

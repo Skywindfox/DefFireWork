@@ -14,24 +14,35 @@
 // ---------------------------------------------------------------------------
 // 项目的主要内容都在本文件。
 //
-// main.cpp 只做一件事: 调用 cpp_start()。这样入口文件保持简单, 真正的逻辑
-// 都集中在这里, 加功能不用往 main.cpp 里塞东西。
+// main.cpp 只做两件事: 把命令行参数放进全局变量, 然后调用 cpp_start()。
 //
-// 关于"要不要循环" (原来写在这里的疑问):
-//   这里**不写循环**。cpp_start() 是"启动一次, 然后返回"的位置。
-//   循环留给 main 或 GUI 的主循环 —— LVGL 的 lv_timer_handler() 必须被反复
-//   调用, 而且两次之间的间隔要按它的返回值来睡, 所以它只能待在真正的主循环
-//   里。详见 src/gui.cpp 的 main(), 那是现成的例子。
+// **主循环只有一处** —— 就在下面的 cpp_start() 里:
+//
+//     device_init();                                  // 硬件/配置, 一次
+//     gui_build();                                    // 建界面, 一次
+//     while (!g_quit) { status(); render(); }         // 每轮: 模块 + 一帧界面
+//     gui_teardown();                                 // 收尾
+//
+// 这样"循环在哪"、"UI 在哪建"、"模块在哪采"各只有一处:
+//   status()     —— 各模块的采集都挂这里(传感器/状态…), 内部自带节流
+//   render()     —— 刷一帧界面(gui.cpp); 控制台版第一帧就置 g_quit
+//   gui_build()  —— 建界面(gui.cpp); 控制台版是空实现(gui_stub.cpp)
+//
+// 各阶段的声明在 start.h, 所以这里不需要再写前置声明。
 // ---------------------------------------------------------------------------
 
-// 各阶段做什么, 见下面每个函数的注释。
-// 定义在本文件后面, 但 cpp_start() 在上面就要用 —— C++ 必须先声明后使用,
-// 少了这几行会报 'device_init' was not declared in this scope。
+namespace {
 
-int device_init();  
-int status();       
-int gui_build();    
-int render();       
+// 单调时钟微秒。status() 的节流和蜂鸣器线程的节拍都用它。
+uint64_t monotonic_us()
+{
+    struct timespec ts {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000ull +
+           static_cast<uint64_t>(ts.tv_nsec) / 1000ull;
+}
+
+}  // namespace
 
 int cpp_start()
 {
@@ -40,10 +51,19 @@ int cpp_start()
         return 1;
     }
 
-    status();
-    gui_build();
-    render();
+    // 建界面只做一次。失败的具体原因 gui_build() 自己已经打到 stderr 了
+    // (例如"无法连接 X server"), 这里不重复刷屏。
+    if (gui_build() < 0) {
+        return 1;
+    }
 
+    // ★ 主循环 —— 整个程序只有这一处
+    while (!g_quit) {
+        status();  // 各模块(自带节流, 见 status())
+        render();  // 刷一帧界面
+    }
+
+    gui_teardown();
     return 0;
 }
 
@@ -156,15 +176,26 @@ int gpio_input_read(const GpioInput &in, int *out_level)
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// 状态采集: 读一次当前状态, 供 gui_build() 和 render() 使用。
-// 将来的周期采集也应该走这里, 保证"状态怎么来的"只有一处。
+// 状态采集: **各模块都挂这里** —— 主循环每轮都会调它, 所以硬件采集在内部节流。
 //
-// 现在做的是: 把 kGpioInputs 里每一路传感器读一遍并打印出来。
+// 为什么节流: 主循环大约 1 ms 一轮(GUI 的定时器节奏), 而读一遍传感器/模块
+// 不需要这个频率 —— 200 ms(5 Hz)对状态量完全够, 板上单核也少烧 CPU。
+// 第一次调用总是立刻跑, 之后按 kStatusPeriodUs 限频。
+//
 // 返回值: 0 —— 单路失败不算整体失败(原因逐条打在 stderr); 负数留给将来
 // "整个采集流程都起不来"那种情况。
 // ---------------------------------------------------------------------------
 int status()
 {
+    constexpr uint64_t kStatusPeriodUs = 200000;  // 200 ms
+    static uint64_t last_run_us = 0;
+
+    const uint64_t now = monotonic_us();
+    if (last_run_us != 0 && now - last_run_us < kStatusPeriodUs) {
+        return 0;  // 还没到下一次采集
+    }
+    last_run_us = now;
+
     std::printf("--- 板载开关量输入 ---\n");
 
     const int filled = countFilledInputs();
@@ -193,30 +224,6 @@ int status()
     if (failed > 0) {
         std::printf("  %d/%d 路没读到 (原因见上面的 stderr)\n", failed, filled);
     }
-
-    return 0;
-}
-
-// ---------------------------------------------------------------------------
-// 界面搭建: 创建窗口/控件, 属于"只做一次"的初始化。
-// 注意不要在这里做绘制 —— 绘制会被反复调用, 建对象只会调一次。
-// ---------------------------------------------------------------------------
-int gui_build()
-{
-    // TODO: 建界面 (LVGL 控件、或者控制台的输出格式)。
-
-    return 0;
-}
-
-// ---------------------------------------------------------------------------
-// 刷新: 把当前状态画出来。会被主循环反复调用。
-//
-// 所以这里**不能**放"开灯 / 关灯"这种一次性的动作 —— 每帧都会执行一遍。
-// 按钮动作要放到按钮的回调里 (见下面 led_on / led_off)。
-// ---------------------------------------------------------------------------
-int render()
-{
-    // TODO: 按 status() 得到的状态更新显示。
 
     return 0;
 }

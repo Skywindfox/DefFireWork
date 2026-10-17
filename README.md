@@ -68,8 +68,8 @@
 
 | 目标 | 源文件 | 说明 | 能否交叉编译 |
 |---|---|---|---|
-| `deffire-gui-dev` | `src/gui.cpp` | **LVGL 图形界面**（X11 后端） | ✅ |
-| `deffire-dev` | `src/main.cpp` | 控制台程序，打印 `hallo world` | ✅ |
+| `deffire-gui-dev` | `src/main.cpp` + `src/gui.cpp` | **LVGL 图形界面**（X11 后端） | ✅ |
+| `deffire-dev` | `src/main.cpp` + `src/gui_stub.cpp` | 控制台程序，打印 `hallo world` | ✅ |
 | `test_greeting` | `tests/test_greeting.cpp` | 单元测试，`ctest` 调用 | ❌ 交叉产物跑不了 |
 | `libfirecontrol.a` | `src/greeting.cpp` `src/usetools.cpp` `src/start.cpp` | 纯逻辑 / 硬件层静态库（`usetools` = 文件读写 + GPIO 读取，`start` = 板载设备控制），上面几个都链接它 | ✅ |
 
@@ -419,8 +419,11 @@ FireControlApp/
 ├── armhf-toolchain/                ★ 交叉编译 GUI 的唯一入口
 ├── src/
 │   ├── greeting.h / greeting.cpp   纯逻辑层 → libfirecontrol.a
-│   ├── main.cpp                    控制台程序入口
-│   └── gui.cpp                     LVGL 图形界面 → deffire-gui-dev
+│   ├── main.cpp                    入口: 收命令行参数 → cpp_start(); 程序级全局量
+│   ├── start.h / start.cpp         骨架: 四个阶段 + 唯一主循环; 板载 LED/蜂鸣器
+│   ├── gui.cpp                     LVGL 界面: gui_build / render / gui_teardown
+│   ├── gui_stub.cpp                控制台版的空实现(同上三个函数) → deffire-dev
+│   └── usetools.h / usetools.cpp   文件读写 + GPIO(libgpiod) → libfirecontrol.a
 ├── third_party/lvgl/               LVGL v9.2.3 源码（已裁掉 docs/demos/tests/examples）
 ├── tests/test_greeting.cpp
 └── .vscode/
@@ -443,6 +446,27 @@ build-debug/         Debug 构建
 
 ## 8. 设计要点
 
+- **一套骨架，两个产物**：`cpp_start()`（`src/start.cpp`）里是**唯一的主循环**，
+  四个阶段的声明在 `src/start.h`：
+
+  ```cpp
+  int  device_init();                              // 硬件/配置, 一次
+  int  status();                                   // 各模块采集(内部节流 200 ms)
+  int  gui_build();                                // 建界面, 一次
+  int  render();                                   // 刷一帧
+  void gui_teardown();                             // 收尾
+
+  device_init();                                   // ↓ cpp_start() 里
+  if (gui_build() < 0) return 1;
+  while (!g_quit) { status(); render(); }
+  gui_teardown();
+  ```
+
+  加模块只动 `status()`，改界面只动 `gui.cpp`，找循环只看 `cpp_start()` 一处。
+  **程序级全局变量**（`g_quit` / `g_argc` / `g_argv`）定义在 `src/main.cpp`，
+  GUI 内部句柄（`g_disp` / `g_font_*` / `g_page` …）留在 `gui.cpp`，不露到全局。
+  控制台版把 `gui_build/render/gui_teardown` 换成 `src/gui_stub.cpp` 的空实现，
+  所以 `main.cpp` 和 `cpp_start()` 只有一份，没有 `#ifdef`。
 - **逻辑层独立成静态库**：`greeting.cpp` → `libfirecontrol.a`，主程序与单元测试都链接它，
   这样逻辑代码能被测试覆盖、也能交叉编译（不依赖平台特有库）。
 - **GUI 用 LVGL + X11 后端**：而不是 framebuffer —— 板上 `/dev/fb0` 归 Xorg 管，直写会抢屏。

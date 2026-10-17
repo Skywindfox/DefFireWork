@@ -22,35 +22,42 @@
 | Linux 交叉编译（`build-armhf.sh`） | ✅ 实测通过 | 0 警告；同源同镜像重建产物 sha256 逐字节一致（可复现） |
 | Windows 交叉编译（`build-armhf.ps1`） | ✅ 已跑通 | FBI-0537 在 Windows 上实跑（2026-09-19，PR #8）：`-Wall -Wextra` 零警告，产物 407948 / 9788 字节。**待办 #2 达成**（此前只改过、从没执行过） |
 | 板上实测（LVGL 版） | ❌ **还没做** | README §10、WARNING A-1；逐项判据见 runbook §3–§4 |
-| 原生 GUI（开发机预览） | ✅ 三页正常 | 首页 / LED 调试页 / 蜂鸣器调试页：切页、按钮派发、退出路径都实测过 |
+| 原生 GUI（开发机预览） | ✅ 四页正常 | 首页 / LED 调试页 / 蜂鸣器调试页 / 外部蜂鸣器页：切页、按钮派发、退出路径都实测过 |
+| 骨架重构（四阶段 + 单循环） | ✅ 原生实测 | 0 警告；主循环 910 次/秒（与重构前一致）；点【退出】→ `gui_teardown()` → 进程干净退出；`--help` 不崩。见 §2.1 |
 | GPIO 输入（libgpiod） | ⚠ 只有骨架 | 依赖链已配齐并交叉编译通过；**没有任何调用点**，板端也没验过（不知道传感器接在哪个 gpiochip / 哪条线上） |
 
 ---
 
 ## 2. 未决的设计问题
 
-### 2.1 业务层与 GUI 还没打通
+### 2.1 业务层与 GUI 的接线（✅ 已解决 —— 2026-09-19 重构）
+
+**原状**（重构前）：`gui.cpp` 自带 `main()` 和自己的 LVGL 循环，`start.cpp` 的
+`status()` / `render()` 在 GUI 里是死代码，GUI 里也没有周期业务逻辑的位置。
+
+**方向选的是 B**（`cpp_start` 接管循环，GUI 不再有自己的 `main()`），现在的结构：
 
 ```
-main.cpp ──> cpp_start() ──> device_init()  ← 唯一有实现的
-                          ──> status()      ← 空壳
-                          ──> gui_build()   ← 空壳
-                          ──> render()      ← 空壳
-
-gui.cpp  ──> 自己的 main()、自己的 LVGL 循环
+main.cpp（收命令行参数 + 定义程序级全局量 g_quit / g_argc / g_argv）
+   └─ cpp_start()                        ★ 唯一主循环
+        device_init()                    ← 硬件/配置，一次
+        gui_build()                      ← 建界面，一次
+        while (!g_quit) { status(); render(); }
+        gui_teardown()                   ← 收尾
 ```
 
-`gui.cpp` **完全不调用 `cpp_start()`**：`device_init` / `status` / `render` 在 GUI 里是
-死代码，GUI 的 `main` 里也没有周期业务逻辑（`fc_tick` 之类）的位置。`start.cpp` 目前
-只服务控制台程序 `deffire-dev`。
-
-**要先决定方向**，再往里加东西：
-
-- **A**：GUI 就是应用本体，`start.cpp` 退化成控制台 demo（那 `status`/`render` 的空壳该删）；
-- **B**：把 `cpp_start` / `status` / `render` 接进 GUI 的循环（那要先定"周期逻辑多久跑一次、
-  界面怎么拿到状态"）。
-
-在这之前**别往 `start.cpp` 里加功能** —— 加了也不知道谁会调用它。
+- `gui.cpp` 原来的 `main()` 拆成三段：`gui_build()`（参数解析 → 探 X → `lv_init` → 字体
+  → 窗口 → 输入 → 布局）、`render()`（切页落地 + 一次 `lv_timer_handler()`）、
+  `gui_teardown()`（停蜂鸣器 → 删显示 → 删字体 → `lv_deinit`，用 `g_lv_inited` 兜住
+  "界面没建起来"的情形）。
+- 控制台版换 `src/gui_stub.cpp` 的同一组实现（`render()` 置 `g_quit`，循环只转一圈），
+  于是 `main.cpp` / `cpp_start()` 只有一份，**不用 `#ifdef`**。
+- **周期逻辑的位置定死了：`status()`**，内部 200 ms 节流（主循环约 1 ms 一轮，传感器不需要这个频率）。
+  不跟 UI 同频的东西（方波）自己开线程，不要塞进 `render()` —— 那样会跟帧率绑死。
+- **实测（原生）**：主循环 910 次/秒，与重构前一致；点【退出】→ 循环退出 →
+  `gui_teardown()` 打印"退出" → 进程 0 退出；`--help` 也在 `gui_build()` 里提前返回，不崩。
+- 注意：`g_quit` 等符号由 `main.cpp` 定义，而 `firecontrol` 静态库里引用它们 ——
+  链接没问题（每个产物各编一份 `main.cpp`），但**别在库里新开对 `start.cpp` 的依赖**。
 
 ### 2.2 真全屏（等实测再决定）
 

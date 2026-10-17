@@ -63,6 +63,7 @@ target_link_libraries(firecontrol PUBLIC Threads::Threads)
 # ---------------------------------------------------------------------------
 add_executable(deffire-dev
     src/main.cpp
+    src/gui_stub.cpp   # 同一套骨架的"无界面"实现: gui_build / render / gui_teardown
 )
 target_link_libraries(deffire-dev PRIVATE firecontrol)
 
@@ -176,7 +177,8 @@ else()
 
         set(HAVE_GUI TRUE)
         add_executable(deffire-gui-dev
-            src/gui.cpp
+            src/main.cpp    # 与控制台版同一个入口: main() 只调 cpp_start()
+            src/gui.cpp     # 四个阶段里的 gui_build / render / gui_teardown
         )
         target_include_directories(deffire-gui-dev PRIVATE ${GUI_DEPS_INCLUDE_DIRS})
         target_compile_options(deffire-gui-dev PRIVATE ${GUI_DEPS_CFLAGS_OTHER})
