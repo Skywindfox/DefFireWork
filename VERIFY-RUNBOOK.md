@@ -378,7 +378,7 @@ DISPLAY=:0 wmctrl -lG
 | 点按钮打印 `失败 (开发机无此设备)` | 代码里**权限不足**与**设备不存在**共用这一条字符串。板上出现它，先查 §2.3 的权限，别急着改代码 |
 | GUI 完全起不来，报 `error while loading shared libraries: libgpiod.so.2` | 板上没装运行时库：`sudo apt install libgpiod2`（见 §2.2）。**不是**传感器功能的问题 |
 | 启动后点几下没反应，打印 `忽略启动瞬间的点击 (启动后 xxx ms)` | 有意为之：`kIgnoreClicksMs = 400`，挡窗口映射瞬间的杂散 ButtonPress |
-| 屏幕中央大字是 `halloworld` | **有意保留**（WARNING A-3）。要改只动 `src/gui.cpp` 的 `kText` |
+| 屏幕中央大字是 `halloworld` | **有意保留**（WARNING A-3）。要改只动 `appGui/gui.cpp` 的 `kText` |
 | 首页只有 3 个按钮、找不到 LED/蜂鸣器的开关 | 界面是分页的：先进【LED 调试】/【蜂鸣器 调试】，6 个硬件按钮在各自的调试页里 |
 | 切页后窗口标题栏/状态灯没变 | 有意为之：顶栏三页一致，切页只重建底栏按钮 |
 | 开了心跳后读 `brightness` 值一直在变 | trigger 生效时内核周期性覆盖 brightness（WARNING.md C-8），正常 |

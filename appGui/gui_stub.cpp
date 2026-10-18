@@ -2,7 +2,7 @@
 //
 // 同一套骨架(main.cpp → cpp_start() → 四个阶段 + 一个循环)要服务两种产物:
 //
-//     deffire-gui-dev  → 链接 src/gui.cpp   (真界面)
+//     deffire-gui-dev  → 链接 appGui/gui.cpp   (真界面)
 //     deffire-dev      → 链接本文件         (没有界面)
 //
 // 这样 main.cpp 和 cpp_start() 只有一份, 不用 #ifdef, 也不用两套入口。

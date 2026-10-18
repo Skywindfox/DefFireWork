@@ -230,7 +230,7 @@ int status()
         // 空表不是错误, 是"还没接线 / 还没实测" —— 说清下一步做什么,
         // 不要假装读过了。
         std::printf("  还没有确认的接线: 先在板上跑 gpiodetect / gpioinfo,\n");
-        std::printf("  再往 start.cpp 的 kGpioInputs 里一行填一个传感器\n");
+        std::printf("  再往 library/start.cpp 的 kGpioInputs 里一行填一个传感器\n");
         std::fflush(stdout);
         return 0;
     }

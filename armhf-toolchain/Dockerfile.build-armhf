@@ -20,7 +20,10 @@ FROM ${BASE_IMAGE}
 # 源码复制进来。注意 .dockerignore 会排除 .git/build* 等, 保持镜像精简。
 COPY CMakeLists.txt lv_conf.h /work/
 COPY armhf-toolchain/ /work/armhf-toolchain/
-COPY src/ /work/src/
+COPY include/ /work/include/
+COPY library/ /work/library/
+COPY source/ /work/source/
+COPY appGui/ /work/appGui/
 COPY tests/ /work/tests/
 COPY third_party/ /work/third_party/
 

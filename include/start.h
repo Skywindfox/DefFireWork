@@ -8,7 +8,7 @@ int cpp_start();
 // ---------------------------------------------------------------------------
 // 应用骨架: 四个阶段 + **一个**主循环
 //
-// 主循环只有一处 —— src/start.cpp 的 cpp_start() 里:
+// 主循环只有一处 —— library/start.cpp 的 cpp_start() 里:
 //
 //     device_init();                       // 硬件 / 配置, 只调一次
 //     gui_build();                         // 建界面, 只调一次
@@ -18,8 +18,8 @@ int cpp_start();
 //   status()  —— **各模块的采集都挂这里**(传感器、状态…); 循环里反复调,
 //                内部自带节流(见 start.cpp), 不会每毫秒读一次硬件。
 //   render()  —— 刷一帧界面; 循环里反复调。
-//   gui_build / render / gui_teardown 在控制台版里是空实现(见 src/gui_stub.cpp),
-//   所以同一套 main.cpp + cpp_start() 能同时服务两种产物, 不用 #ifdef。
+//   gui_build / render / gui_teardown 在控制台版里是空实现(见 appGui/gui_stub.cpp),
+//   所以同一套 source/main.cpp + cpp_start() 能同时服务两种产物, 不用 #ifdef。
 // ---------------------------------------------------------------------------
 int device_init();
 int status();

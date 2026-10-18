@@ -19,7 +19,7 @@
 |---|---|---|
 | 1 | **LVGL 版的 armhf 产物还没在板上实测过** | 只做到交叉编译验证（构建 0 警告、产物为 armv7 hard-float、`NEEDED` 为 libX11/libfreetype）。**上板先点一遍【退出】和底部按钮**，确认触摸坐标、中文显示、字体路径都对 |
 | 2 | **开发机上跑 GUI 中文会显示成方框** | 字体候选表里 6 条路径都是 Debian 布局，Fedora 上一条都不存在。临时绕开：`./build/deffire-gui-dev --font=/usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc`。**板上不受影响**（`wqy-zenhei.ttc` 在候选表第一条） |
-| 3 | **界面中央那行大字仍是 `halloworld`** | 二进制已改名为 `deffire-gui-dev` / `deffire-dev`，但屏幕正中显示的文字是 `src/gui.cpp` 里的 `kText`，**有意保留未改**。要改只动那一个常量 |
+| 3 | **界面中央那行大字仍是 `halloworld`** | 二进制已改名为 `deffire-gui-dev` / `deffire-dev`，但屏幕正中显示的文字是 `appGui/gui.cpp` 里的 `kText`，**有意保留未改**。要改只动那一个常量 |
 | 4 | **CMake 不自动扫描源文件** | 新增 `.cpp` 必须手动加到 `CMakeLists.txt`（`add_library` / `add_executable`），否则不会被编译 |
 | 5 | **`build.sh` 没有"运行"模式** | 删 Zig 路径时 `run` / `gui` 一并删了。跑控制台直接调二进制 `./build/deffire-dev`；开发机看窗口用 `./build/deffire-gui-dev --windowed` |
 | 6 | **armhf 的 GUI 不能在开发机运行** | 架构不同 + 需要板子的 libX11。必须 scp 到板子 |
@@ -391,7 +391,7 @@ useable_tools::write_File(Led_trigger_Path, "none");   // 先交还控制权
 return useable_tools::write_File(Led_on_board_Path, "1");
 ```
 
-`src/start.cpp` 里 4 个开/关函数（LED + 蜂鸣器）都是这个顺序。交还那一步的返回值
+`library/start.cpp` 里 4 个开/关函数（LED + 蜂鸣器）都是这个顺序。交还那一步的返回值
 **故意不检查**：不是所有设备都有 trigger 文件，没有时 brightness 本来就能直接生效。
 
 **连带效果**：因为开/关都会清 trigger，"心跳停不下来"的问题也一并缓解了 ——
@@ -610,7 +610,7 @@ udevadm info -q property /dev/gpiochip0 | grep SUBSYSTEM   # 应当输出 gpio
 （两者 DT 极性都是 active-low，但不影响 sysfs：`brightness=1` 就是"亮 / 响"。）
 
 **谁在用这条权限**：`useable_tools::gpio_read_value()` 现在**有调用点了** ——
-`src/start.cpp` 的传感器接线表 `kGpioInputs` 通过它读开关量输入。接线表目前是空的
+`library/start.cpp` 的传感器接线表 `kGpioInputs` 通过它读开关量输入。接线表目前是空的
 （板上到底接了哪些传感器还没确认），所以这条权限是传感器模块上板验证的**前置条件**，
 不再是"提前配好、暂时没用"。详见 [workflow.md](workflow.md) §2.3（那张线上表也在那里）。
 
@@ -625,5 +625,5 @@ udevadm info -q property /dev/gpiochip0 | grep SUBSYSTEM   # 应当输出 gpio
 | 触摸内核认到但 X 不认 | X server 没加载 evdev/libinput 驱动 | 装 `xserver-xorg-input-libinput`，查 `/var/log/Xorg.0.log` |
 | `xdpyinfo: unable to open display ""` | ssh/串口会话里 `DISPLAY` 为空；Xorg 还带 `-auth` | `export DISPLAY=:0`，必要时设 `XAUTHORITY` |
 | 系统里没有 `gcc-arm-linux-gnu` | Fedora 不提供这个包名 | 本项目交叉编译走容器，不需要它 |
-| 全屏下 40/18/16 号字观感偏大 | 设计如此（`kBigFontPx` / `kSmallFontPx` / `kStatusFontPx`），板子 1024×600 | 改 `src/gui.cpp` 里这三个常量 |
+| 全屏下 40/18/16 号字观感偏大 | 设计如此（`kBigFontPx` / `kSmallFontPx` / `kStatusFontPx`），板子 1024×600 | 改 `appGui/gui.cpp` 里这三个常量 |
 | `#include <linux/...>` 交叉编译能用，`<X11/...>` 不能 | 前者是内核 UAPI（Zig 自带 611 个），后者是外部库 | 后者需要 sysroot，见 [B-6](#b-6-zig-不带任何-x11-头文件) |

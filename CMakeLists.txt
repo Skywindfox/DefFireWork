@@ -40,17 +40,22 @@ endif()
 # 把逻辑放库里的好处: 主程序和单元测试链接同一份代码,
 # 而且这一层可以交叉编译到 armhf (不依赖任何平台特有库)。
 #
-# 新增 .cpp 就在这里登记 —— CMake 不自动扫描目录。
-# 只要源文件放在 src/ 下、且被登记到这里或下面的 add_executable,
-# 就能被编译; 头文件不用单独登记 (target_include_directories 已含 src/)。
+# 目录分工:
+#   include/   对外头文件      (greeting.h / start.h / usetools.h / hardware_path.h)
+#   library/   静态库实现      → libfirecontrol.a
+#   source/    程序入口        (main.cpp)
+#   appGui/    界面实现        (gui.cpp 真界面 / gui_stub.cpp 无界面版)
+#
+# 新增 .cpp 就在对应目标里登记 —— CMake 不自动扫描目录。
+# 头文件不用单独登记: target_include_directories 已经把 include/ 公开出去。
 # ---------------------------------------------------------------------------
 add_library(firecontrol
-    src/greeting.cpp
-    src/usetools.cpp
-    src/start.cpp
+    library/greeting.cpp
+    library/usetools.cpp
+    library/start.cpp
 )
 target_include_directories(firecontrol PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # start.cpp 的蜂鸣器发声线程用 pthread。glibc 2.34+ 已经把 pthread 并进 libc,
@@ -62,8 +67,8 @@ target_link_libraries(firecontrol PUBLIC Threads::Threads)
 # 可执行文件
 # ---------------------------------------------------------------------------
 add_executable(deffire-dev
-    src/main.cpp
-    src/gui_stub.cpp   # 同一套骨架的"无界面"实现: gui_build / render / gui_teardown
+    source/main.cpp
+    appGui/gui_stub.cpp   # 同一套骨架的"无界面"实现: gui_build / render / gui_teardown
 )
 target_link_libraries(deffire-dev PRIVATE firecontrol)
 
@@ -153,8 +158,8 @@ else()
         # (16 位色、没开 X11/FreeType), 编出来的界面是另一回事。
         set(LV_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h")
 
-        # 只编 src/: 不编 examples/demos, 也不编内置的 ThorVG 矢量图库。用不到,
-        # 编了只是让构建变慢。
+        # 只编 LVGL 自己的 src/: 不编 examples/demos, 也不编内置的 ThorVG 矢量图库。
+        # 用不到, 编了只是让构建变慢。
         set(LV_CONF_BUILD_DISABLE_EXAMPLES ON)
         set(LV_CONF_BUILD_DISABLE_DEMOS ON)
         set(LV_CONF_BUILD_DISABLE_THORVG_INTERNAL ON)
@@ -177,8 +182,8 @@ else()
 
         set(HAVE_GUI TRUE)
         add_executable(deffire-gui-dev
-            src/main.cpp    # 与控制台版同一个入口: main() 只调 cpp_start()
-            src/gui.cpp     # 四个阶段里的 gui_build / render / gui_teardown
+            source/main.cpp    # 与控制台版同一个入口: main() 只调 cpp_start()
+            appGui/gui.cpp     # 四个阶段里的 gui_build / render / gui_teardown
         )
         target_include_directories(deffire-gui-dev PRIVATE ${GUI_DEPS_INCLUDE_DIRS})
         target_compile_options(deffire-gui-dev PRIVATE ${GUI_DEPS_CFLAGS_OTHER})
