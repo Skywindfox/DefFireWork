@@ -11,29 +11,36 @@
 
 ```
 FireControlApp/
-├── include/          对外头文件 —— 库与程序都只从这里 include
-│   ├── greeting.h      纯逻辑层
-│   ├── hardware_path.h 板上 sysfs 路径常量 (LED / 蜂鸣器)
-│   ├── start.h         骨架: 四个阶段 + 程序级全局量
-│   └── usetools.h      文件读写 / GPIO 输入
-├── library/          静态库实现 → libfirecontrol.a
-│   ├── greeting.cpp    纯逻辑
-│   ├── start.cpp       唯一主循环 + 板载 LED/蜂鸣器 + 外部蜂鸣器线程
-│   └── usetools.cpp    sysfs / libgpiod
-├── source/           程序入口
-│   └── main.cpp        收参数 → cpp_start()
-├── appGui/           界面实现
-│   ├── gui.cpp         LVGL 界面 → deffire-gui-dev
-│   └── gui_stub.cpp    无界面版 → deffire-dev
-├── tests/            单元测试 (ctest)
-├── third_party/lvgl/ LVGL v9.2.3 源码 (已裁剪)
-├── armhf-toolchain/  交叉编译唯一入口
+├── include/            对外头文件 —— 库与程序都只从这里 include
+│   ├── greeting.h        纯逻辑层
+│   ├── hardware_path.h   板上 sysfs 路径常量 (LED / 蜂鸣器)
+│   ├── start.h           骨架: 四个阶段 + 程序级全局量
+│   └── usetools.h        文件读写 / GPIO 输入
+├── src/
+│   ├── library/        静态库实现 → libfirecontrol.a
+│   │   ├── greeting.cpp  纯逻辑
+│   │   ├── start.cpp     唯一主循环 + 板载 LED/蜂鸣器 + 外部蜂鸣器线程
+│   │   └── usetools.cpp  sysfs / libgpiod
+│   ├── source/         程序入口
+│   │   └── main.cpp      收参数 → cpp_start()
+│   └── appgui/         界面实现
+│       ├── gui.cpp       LVGL 界面 → deffire-gui-dev
+│       └── gui_stub.cpp  无界面版 → deffire-dev
+├── tests/              单元测试 (ctest)
+├── third_party/lvgl/   LVGL v9.2.3 源码 (已裁剪)
+├── armhf-toolchain/    交叉编译唯一入口
 └── CMakeLists.txt / lv_conf.h / build.sh / *.md
 ```
 
-目录与 CMake 的目标一一对应：`include` + `library` → `libfirecontrol.a`，
-`source/main.cpp` + `appGui/gui.cpp` → `deffire-gui-dev`，`+ appGui/gui_stub.cpp` → `deffire-dev`。
-新加文件时**先想清楚它属于库还是程序**，再放进对应目录并在 CMake 里登记。
+三个子目录与 CMake 的目标一一对应：
+
+| 目录 | 目标 |
+|---|---|
+| `include/` + `src/library/` | `libfirecontrol.a` |
+| `src/source/main.cpp` + `src/appgui/gui.cpp` | `deffire-gui-dev` |
+| `src/source/main.cpp` + `src/appgui/gui_stub.cpp` | `deffire-dev` |
+
+新加文件时**先想清楚它属于库还是程序**，再放进 `src/` 下对应目录并在 CMake 里登记。
 
 ---
 
@@ -314,7 +321,7 @@ cmake -B build -S . -DWITH_GPIOD=ON      # 必须要有可用的 libgpiod, 否�
 > `gpio_read_value()` 移植到 v2 API。交叉编译/板上不受影响。
 
 板载 LED / 蜂鸣器**不需要** libgpiod（走 `/sys/class/leds/*`）；要它的是接在
-GPIO 上的开关量输入传感器 —— 接线表在 `library/start.cpp` 的 `kGpioInputs`（现在是空的，
+GPIO 上的开关量输入传感器 —— 接线表在 `src/library/start.cpp` 的 `kGpioInputs`（现在是空的，
 要上板实测后填，见 §10）。
 ---
 
@@ -335,7 +342,7 @@ IntelliSense 走 `compile_commands.json`（CMake 导出），所以补全/跳转
 
 ## 8. 设计要点
 
-- **一套骨架，两个产物**：`cpp_start()`（`library/start.cpp`）里是**唯一的主循环**，
+- **一套骨架，两个产物**：`cpp_start()`（`src/library/start.cpp`）里是**唯一的主循环**，
   四个阶段的声明在 `include/start.h`：
 
   ```cpp
@@ -352,9 +359,9 @@ IntelliSense 走 `compile_commands.json`（CMake 导出），所以补全/跳转
   ```
 
   加模块只动 `status()`，改界面只动 `gui.cpp`，找循环只看 `cpp_start()` 一处。
-  **程序级全局变量**（`g_quit` / `g_argc` / `g_argv`）定义在 `source/main.cpp`，
+  **程序级全局变量**（`g_quit` / `g_argc` / `g_argv`）定义在 `src/source/main.cpp`，
   GUI 内部句柄（`g_disp` / `g_font_*` / `g_page` …）留在 `gui.cpp`，不露到全局。
-  控制台版把 `gui_build/render/gui_teardown` 换成 `appGui/gui_stub.cpp` 的空实现，
+  控制台版把 `gui_build/render/gui_teardown` 换成 `src/appgui/gui_stub.cpp` 的空实现，
   所以 `main.cpp` 和 `cpp_start()` 只有一份，没有 `#ifdef`。
 - **逻辑层独立成静态库**：`greeting.cpp` → `libfirecontrol.a`，主程序与单元测试都链接它，
   这样逻辑代码能被测试覆盖、也能交叉编译（不依赖平台特有库）。

@@ -51,7 +51,7 @@ main.cpp（收命令行参数 + 定义程序级全局量 g_quit / g_argc / g_arg
   → 窗口 → 输入 → 布局）、`render()`（切页落地 + 一次 `lv_timer_handler()`）、
   `gui_teardown()`（停蜂鸣器 → 删显示 → 删字体 → `lv_deinit`，用 `g_lv_inited` 兜住
   "界面没建起来"的情形）。
-- 控制台版换 `appGui/gui_stub.cpp` 的同一组实现（`render()` 置 `g_quit`，循环只转一圈），
+- 控制台版换 `src/appgui/gui_stub.cpp` 的同一组实现（`render()` 置 `g_quit`，循环只转一圈），
   于是 `main.cpp` / `cpp_start()` 只有一份，**不用 `#ifdef`**。
 - **周期逻辑的位置定死了：`status()`**，内部 200 ms 节流（主循环约 1 ms 一轮，传感器不需要这个频率）。
   不跟 UI 同频的东西（方波）自己开线程，不要塞进 `render()` —— 那样会跟帧率绑死。
@@ -100,7 +100,7 @@ consumer 就是 `"sys-led"` / `"beep"`，状态 `[used]`。所以它们**必须*
 写 sysfs（`brightness=1` 就是"亮 / 响"）。
 
 **传感器接在哪条线上，仍是硬件事实 —— `gpioinfo` 给不了。** 它只能告诉你"哪些线空闲"，
-而"空闲"不等于"接了什么"。所以 `library/start.cpp` 的接线表保持空白，等接线确认后一行填一行。
+而"空闲"不等于"接了什么"。所以 `src/library/start.cpp` 的接线表保持空白，等接线确认后一行填一行。
 下面是当天的空闲线快照（仅供对照，**别拿它当接线依据**）：
 
 ```
@@ -155,7 +155,7 @@ FIRECONTROL_BUZZER_HZ=3000 DISPLAY=:0 ./deffire-gui-dev     # 100..8000，超范
 翻译单元（`usetools.cpp`），链接器为 `write_File` 拉进这个 `.o` 时会把 gpiod 引用一起带上
 —— 于是**连不读 GPIO 的控制台程序 `deffire-dev` 也依赖 `libgpiod.so.2`**
 （产物 5,648 → 9,768 字节）。想去掉这个连带依赖，把 `gpio_read_value()` 挪到自己的
-`.cpp`（如 `library/gpio.cpp`）并登记进 `CMakeLists.txt` 即可，那样只有真正调用它的目标才链
+`.cpp`（如 `src/library/gpio.cpp`）并登记进 `CMakeLists.txt` 即可，那样只有真正调用它的目标才链
 libgpiod。**现在没做** —— 板子无论如何都要装 `libgpiod2`（GUI 需要），收益只是让控制台
 程序少一个依赖。
 
@@ -164,7 +164,7 @@ libgpiod。**现在没做** —— 板子无论如何都要装 `libgpiod2`（GUI
 
 ---
 
-## 3. 界面的约定（改 `appGui/gui.cpp` 之前先读）
+## 3. 界面的约定（改 `src/appgui/gui.cpp` 之前先读）
 
 界面是**单屏 + 分页底栏**：顶栏（品牌 / 状态灯 / 退出）三页完全一致，切页只重建底栏按钮。
 

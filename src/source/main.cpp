@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     g_argc = argc;
     g_argv = argv;
 
-    // 真正的代码在 library/start.cpp 的 cpp_start() 里(含唯一的主循环)。
+    // 真正的代码在 src/library/start.cpp 的 cpp_start() 里(含唯一的主循环)。
     // 这里只保留"入口"这一件事: 调用, 然后返回它的结果。
     return cpp_start();
 }

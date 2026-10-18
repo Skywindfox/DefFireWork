@@ -41,18 +41,18 @@ endif()
 # 而且这一层可以交叉编译到 armhf (不依赖任何平台特有库)。
 #
 # 目录分工:
-#   include/   对外头文件      (greeting.h / start.h / usetools.h / hardware_path.h)
-#   library/   静态库实现      → libfirecontrol.a
-#   source/    程序入口        (main.cpp)
-#   appGui/    界面实现        (gui.cpp 真界面 / gui_stub.cpp 无界面版)
+#   include/      对外头文件   (greeting.h / start.h / usetools.h / hardware_path.h)
+#   src/library/  静态库实现   → libfirecontrol.a
+#   src/source/   程序入口     (main.cpp)
+#   src/appgui/   界面实现     (gui.cpp 真界面 / gui_stub.cpp 无界面版)
 #
 # 新增 .cpp 就在对应目标里登记 —— CMake 不自动扫描目录。
 # 头文件不用单独登记: target_include_directories 已经把 include/ 公开出去。
 # ---------------------------------------------------------------------------
 add_library(firecontrol
-    library/greeting.cpp
-    library/usetools.cpp
-    library/start.cpp
+    src/library/greeting.cpp
+    src/library/usetools.cpp
+    src/library/start.cpp
 )
 target_include_directories(firecontrol PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -67,8 +67,8 @@ target_link_libraries(firecontrol PUBLIC Threads::Threads)
 # 可执行文件
 # ---------------------------------------------------------------------------
 add_executable(deffire-dev
-    source/main.cpp
-    appGui/gui_stub.cpp   # 同一套骨架的"无界面"实现: gui_build / render / gui_teardown
+    src/source/main.cpp
+    src/appgui/gui_stub.cpp   # 同一套骨架的"无界面"实现: gui_build / render / gui_teardown
 )
 target_link_libraries(deffire-dev PRIVATE firecontrol)
 
@@ -182,8 +182,8 @@ else()
 
         set(HAVE_GUI TRUE)
         add_executable(deffire-gui-dev
-            source/main.cpp    # 与控制台版同一个入口: main() 只调 cpp_start()
-            appGui/gui.cpp     # 四个阶段里的 gui_build / render / gui_teardown
+            src/source/main.cpp    # 与控制台版同一个入口: main() 只调 cpp_start()
+            src/appgui/gui.cpp     # 四个阶段里的 gui_build / render / gui_teardown
         )
         target_include_directories(deffire-gui-dev PRIVATE ${GUI_DEPS_INCLUDE_DIRS})
         target_compile_options(deffire-gui-dev PRIVATE ${GUI_DEPS_CFLAGS_OTHER})

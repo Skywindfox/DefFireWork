@@ -21,9 +21,7 @@ FROM ${BASE_IMAGE}
 COPY CMakeLists.txt lv_conf.h /work/
 COPY armhf-toolchain/ /work/armhf-toolchain/
 COPY include/ /work/include/
-COPY library/ /work/library/
-COPY source/ /work/source/
-COPY appGui/ /work/appGui/
+COPY src/ /work/src/
 COPY tests/ /work/tests/
 COPY third_party/ /work/third_party/
 
